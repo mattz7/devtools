@@ -7,7 +7,9 @@ BINPROGS = \
 	manjarobuild \
 	lddd \
 	finddeps \
-	find-libdeps
+	find-libdeps \
+	signpkg \
+	signpkgs
 
 SBINPROGS = \
 	mkmanjaroroot \
