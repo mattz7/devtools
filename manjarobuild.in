@@ -1,0 +1,88 @@
+#!/bin/bash
+
+m4_include(lib/common.sh)
+
+base_packages=(base-devel)
+makechrootpkg_args=(-c -n)
+
+cmd="${0##*/}"
+tag="${cmd%-build}"
+repo=${tag%-*}
+arch=${tag##*-}
+pacman_conf_arch='default'
+
+if [ "$arch" == 'multilib' ]; then
+	pacman_conf_arch='multilib'
+	arch='x86_64'
+	base_packages+=(multilib-devel)
+fi
+
+chroots='/var/lib/manjarobuild'
+clean_first=false
+
+usage() {
+	echo "Usage: $cmd [options] -- [makechrootpkg args]"
+	echo '    -h         This help'
+	echo '    -c         Recreate the chroot before building'
+	echo '    -r <dir>   Create chroots in this directory'
+	echo ''
+	echo "Default makechrootpkg args: ${makechrootpkg_args[*]}"
+	echo ''
+	exit 1
+}
+
+while getopts 'hcr:' arg; do
+	case "${arg}" in
+		c) clean_first=true ;;
+		r) chroots="$OPTARG" ;;
+		*) usage ;;
+	esac
+done
+
+# Pass all arguments after -- right to makepkg
+makechrootpkg_args+=("${@:$OPTIND}")
+
+if (( EUID )); then
+	die 'This script must be run as root.'
+fi
+
+if ${clean_first} || [[ ! -d "${chroots}/${repo}-${arch}" ]]; then
+	msg "Creating chroot for [${repo}] (${arch})..."
+
+	for copy in "${chroots}/${repo}-${arch}"/*; do
+		[[ -d $copy ]] || continue
+		msg2 "Deleting chroot copy '$(basename "${copy}")'..."
+
+		exec 9>"$copydir.lock"
+		if ! flock -n 9; then
+			stat_busy "Locking chroot copy '$copy'"
+			flock 9
+			stat_done
+		fi
+
+		if [[ "$(stat -f -c %T "${copy}")" == btrfs ]]; then
+			{ type -P btrfs && btrfs subvolume delete "${copy}"; } &>/dev/null
+		fi
+		rm -rf --one-file-system "${copy}"
+	done
+	exec 9>&-
+
+	rm -rf --one-file-system "${chroots}/${repo}-${arch}"
+	mkdir -p "${chroots}/${repo}-${arch}"
+	setarch "${arch}" mkmanjaroroot \
+		-C "@pkgdatadir@/pacman-${pacman_conf_arch}.conf" \
+		-M "@pkgdatadir@/makepkg-${arch}.conf" \
+		-b "${repo}" \
+		"${chroots}/${repo}-${arch}/root" \
+		"${base_packages[@]}" || abort
+else
+	setarch ${arch} mkmanjaroroot \
+		-u \
+		-C "@pkgdatadir@/pacman-${pacman_conf_arch}.conf" \
+		-M "@pkgdatadir@/makepkg-${arch}.conf" \
+		-b "${repo}" \
+		"${chroots}/${repo}-${arch}/root" || abort
+fi
+
+msg "Building in chroot for [${repo}] (${arch})..."
+exec setarch "${arch}" makechrootpkg "${makechrootpkg_args[@]}" -r "${chroots}/${repo}-${arch}" -b "${repo}"
