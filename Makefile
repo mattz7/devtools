@@ -9,9 +9,7 @@ BINPROGS = \
 	finddeps \
 	find-libdeps \
 	signpkg \
-	signpkgs
-
-SBINPROGS = \
+	signpkgs \
 	mkmanjaroroot \
 	makechrootpkg
 
@@ -33,7 +31,7 @@ MANJAROBUILD_LINKS = \
 	unstable-multilib-build
 
 
-all: $(BINPROGS) $(SBINPROGS)
+all: $(BINPROGS)
 
 edit = sed -e "s|@pkgdatadir[@]|$(DESTDIR)$(PREFIX)/share/devtools|g"
 
@@ -45,21 +43,18 @@ edit = sed -e "s|@pkgdatadir[@]|$(DESTDIR)$(PREFIX)/share/devtools|g"
 	@chmod +x "$@"
 
 clean:
-	rm -f $(BINPROGS) $(SBINPROGS)
+	rm -f $(BINPROGS)
 
 install:
 	install -dm0755 $(DESTDIR)$(PREFIX)/bin
-	install -dm0755 $(DESTDIR)$(PREFIX)/sbin
 	install -dm0755 $(DESTDIR)$(PREFIX)/share/devtools
 	install -m0755 ${BINPROGS} $(DESTDIR)$(PREFIX)/bin
-	install -m0755 ${SBINPROGS} $(DESTDIR)$(PREFIX)/sbin
 	install -m0644 ${CONFIGFILES} $(DESTDIR)$(PREFIX)/share/devtools
 	for l in ${MANJAROBUILD_LINKS}; do ln -sf manjarobuild $(DESTDIR)$(PREFIX)/bin/$$l; done
 	ln -sf find-libdeps $(DESTDIR)$(PREFIX)/bin/find-libprovides
 
 uninstall:
 	for f in ${BINPROGS}; do rm -f $(DESTDIR)$(PREFIX)/bin/$$f; done
-	for f in ${SBINPROGS}; do rm -f $(DESTDIR)$(PREFIX)/sbin/$$f; done
 	for f in ${CONFIGFILES}; do rm -f $(DESTDIR)$(PREFIX)/share/devtools/$$f; done
 	for l in ${MANJAROBUILD_LINKS}; do rm -f $(DESTDIR)$(PREFIX)/bin/$$l; done
 	rm -f $(DESTDIR)$(PREFIX)/bin/find-libprovides
