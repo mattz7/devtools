@@ -102,6 +102,7 @@ build_mount_args() {
 copy_hostconf () {
 	cp -a /etc/pacman.d/gnupg "${working_dir}/etc/pacman.d"
 	echo "Server = ${host_mirror}" > ${working_dir}/etc/pacman.d/mirrorlist
+	sed -i -e "s|^.*Branch=.*|Branch=${branch}|" ${working_dir}/etc/pacman-mirrors.conf
 
 	if [[ -n $pac_conf && $NOCOPY = 'n' ]]; then
 		cp ${pac_conf} ${working_dir}/etc/pacman.conf
