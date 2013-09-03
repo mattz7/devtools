@@ -17,6 +17,7 @@ CONFIGFILES = \
 	makepkg-i686.conf \
 	makepkg-x86_64.conf \
 	pacman-default.conf \
+	pacman-mirrors.conf \
 	pacman-multilib.conf
 
 MANJAROBUILD_LINKS = \

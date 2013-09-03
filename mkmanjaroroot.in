@@ -28,6 +28,7 @@ usage() {
 	echo '    -u            Update the chroot via pacman'
 	echo '    -C <file>     Location of a pacman config file'
 	echo '    -M <file>     Location of a makepkg config file'
+	echo '    -S <file>     Location of a pacman-mirrors config file'
 	echo '    -n            Do not copy config files into the chroot'
 	echo '    -c <dir>      Set pacman cache'
 	echo '    -b <branch>   Set repository branch'
@@ -35,7 +36,7 @@ usage() {
 	exit 1
 }
 
-while getopts 'r:ufnhC:M:c:b:' arg; do
+while getopts 'r:ufnhC:M:S:c:b:' arg; do
 	case "${arg}" in
 		r) RUN="$OPTARG" ;;
 		u) RUN='pacman -Syu --noconfirm' ;;
@@ -44,6 +45,7 @@ while getopts 'r:ufnhC:M:c:b:' arg; do
 		n) NOCOPY='y' ;;
 		c) cache_dir="$OPTARG" ;;
 		b) branch="$OPTARG" ;;
+		S) mirrors_conf="$OPTARG" ;;
 		h|?) usage ;;
 		*) error "invalid argument '${arg}'"; usage ;;
 	esac
@@ -107,6 +109,11 @@ copy_hostconf () {
 
 	if [[ -n $makepkg_conf && $NOCOPY = 'n' ]]; then
 		cp ${makepkg_conf} ${working_dir}/etc/makepkg.conf
+	fi
+
+	if [[ -n $mirrors_conf && $NOCOPY = 'n' ]]; then
+		cp ${mirrors_conf} ${working_dir}/etc/pacman-mirrors.conf
+		sed -i -e "s|^.*Branch=.*|Branch=${branch}|" ${working_dir}/etc/pacman-mirrors.conf
 	fi
 
 	sed -r "s|^#?\\s*CacheDir.+|CacheDir = $(echo -n ${cache_dirs[@]})|g" -i ${working_dir}/etc/pacman.conf
