@@ -8,6 +8,8 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
+set -x
+
 m4_include(lib/common.sh)
 
 CHROOT_VERSION='v3'
@@ -19,6 +21,13 @@ working_dir=''
 branch='stable'
 
 APPNAME=$(basename "${0}")
+
+# check for openrc running on build system
+if [[ -d /run/openrc ]];then
+	IS_OPENRC=1
+else
+	IS_OPENRC=0
+fi
 
 # usage: usage <exitvalue>
 usage() {
@@ -87,15 +96,28 @@ build_mount_args() {
 
 	if [[ -n $host_mirror_path ]]; then
 		printf -v p '%q' "$host_mirror_path"
-		mount_args+=(--bind-ro="$p")
+		if (( $IS_OPENRC ));then
+			mount_args+=("$p") #-o --bind ro
+		else
+			mount_args+=(--bind-ro="$p")
+		fi
 	fi
 
 	printf -v p '%q' "${cache_dirs[0]}"
-	mount_args+=(--bind="$p")
+	if (( $IS_OPENRC ));then
+		mount_args+=("$p") #--bind
+	else
+		mount_args+=(--bind="$p")
+	fi
+
 
 	for cache_dir in ${cache_dirs[@]:1}; do
 		printf -v p '%q' "$cache_dir"
-		mount_args+=(--bind-ro="$p")
+		if (( $IS_OPENRC ));then
+			mount_args+=("$p") #-o --bind ro
+		else
+			mount_args+=(--bind-ro="$p")
+		fi
 	done
 }
 
@@ -137,12 +159,23 @@ chroot_lock () {
 chroot_run() {
 	local dir=$1
 	shift
-	systemd-nspawn -D "${dir}" "${mount_args[@]}" -- ${@} 2>/dev/null
+	if (( $IS_OPENRC ));then
+		# the mounting doesn't work properly here for all cases --> readonly
+		for m_arg in ${mount_args[@]};do
+			mount --bind -o  ro "${m_arg}" "${dir}${m_arg}"
+		done
+		arch-chroot ${dir} ${@} 2>/dev/null
+
+		#unmounting has to be done somewhere too
+	else
+		systemd-nspawn -D "${dir}" "${mount_args[@]}" -- ${@} 2>/dev/null
+	fi
 }
 
 # }}}
 
 umask 0022
+
 if [[ -n $RUN ]]; then
 	# run chroot {{{
 	#Sanity check
