@@ -16,12 +16,12 @@ pkgver() {
 }
 
 build() {
-	cd ${srcdir}/${pkgname}
+	cd ${srcdir}/${pkgname}-master
 	make PREFIX=/usr
 }
 
 package() {
-	cd ${srcdir}/${pkgname}
+	cd ${srcdir}/${pkgname}-master
 	make PREFIX=/usr DESTDIR=${pkgdir} install
 }
 
