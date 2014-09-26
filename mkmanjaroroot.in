@@ -97,7 +97,7 @@ build_mount_args() {
 	if [[ -n $host_mirror_path ]]; then
 		printf -v p '%q' "$host_mirror_path"
 		if (( $IS_OPENRC ));then
-			mount_args+=("$p;-Brv")
+			mount_args+=("$p;-Br")
 		else
 			mount_args+=(--bind-ro="$p")
 		fi
@@ -105,7 +105,7 @@ build_mount_args() {
 
 	printf -v p '%q' "${cache_dirs[0]}"
 	if (( $IS_OPENRC ));then
-		mount_args+=("$p;-Bv")
+		mount_args+=("$p;-B")
 	else
 		mount_args+=(--bind="$p")
 	fi
@@ -114,7 +114,7 @@ build_mount_args() {
 	for cache_dir in ${cache_dirs[@]:1}; do
 		printf -v p '%q' "$cache_dir"
 		if (( $IS_OPENRC ));then
-			mount_args+=("$p;-Brv")
+			mount_args+=("$p;-Br")
 		else
 			mount_args+=(--bind-ro="$p")
 		fi
@@ -163,7 +163,7 @@ chroot_run() {
 		# mount mount_args
 		# apply ';' filter
 		for m_arg in ${mount_args[@]};do
-			mount "${m_arg#*;}" "${m_arg%;*}" "${dir}${m_arg%;*}"
+			mount -v "${m_arg#*;}" "${m_arg%;*}" "${dir}${m_arg%;*}"
 		done
 
 		# chroot
