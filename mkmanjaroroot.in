@@ -8,8 +8,6 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-#set -x
-
 m4_include(lib/common.sh)
 
 CHROOT_VERSION='v3'
@@ -22,11 +20,11 @@ branch='stable'
 
 APPNAME=$(basename "${0}")
 
-# check for openrc running on build system
-if [[ -d /run/openrc ]];then
-	IS_OPENRC=1
+# check for systemd running on build system
+if [[ -d /run/systemd ]];then
+	IS_SYSTEMD=1
 else
-	IS_OPENRC=0
+	IS_SYSTEMD=0
 fi
 
 # usage: usage <exitvalue>
@@ -96,27 +94,26 @@ build_mount_args() {
 
 	if [[ -n $host_mirror_path ]]; then
 		printf -v p '%q' "$host_mirror_path"
-		if (( $IS_OPENRC ));then
-			mount_args+=("$p;-Br")
-		else
+		if (( $IS_SYSTEMD ));then
 			mount_args+=(--bind-ro="$p")
+		else
+			mount_args+=("$p;-Br")
 		fi
 	fi
 
 	printf -v p '%q' "${cache_dirs[0]}"
-	if (( $IS_OPENRC ));then
-		mount_args+=("$p;-B")
-	else
+	if (( $IS_SYSTEMD ));then
 		mount_args+=(--bind="$p")
+	else
+		mount_args+=("$p;-B")
 	fi
-
 
 	for cache_dir in ${cache_dirs[@]:1}; do
 		printf -v p '%q' "$cache_dir"
-		if (( $IS_OPENRC ));then
-			mount_args+=("$p;-Br")
-		else
+		if (( $IS_SYSTEMD ));then
 			mount_args+=(--bind-ro="$p")
+		else
+			mount_args+=("$p;-Br")
 		fi
 	done
 }
@@ -159,8 +156,10 @@ chroot_lock () {
 chroot_run() {
 	local dir=$1
 	shift
-	if (( $IS_OPENRC ));then
-		# mount mount_args
+	if (( $IS_SYSTEMD ));then
+		systemd-nspawn -D "${dir}" "${mount_args[@]}" -- ${@} 2>/dev/null
+
+	else
 		# apply ';' filter
 		for m_arg in ${mount_args[@]};do
 			mount -v "${m_arg#*;}" "${m_arg%;*}" "${dir}${m_arg%;*}"
@@ -169,13 +168,10 @@ chroot_run() {
 		# chroot
 		arch-chroot "${dir}" "${@}" 2>/dev/null
 
-		# umount mount_args
 		# apply ';' filter
 		for m_arg in ${mount_args[@]};do
 			umount -v "${dir}${m_arg%;*}"
 		done
-	else
-		systemd-nspawn -D "${dir}" "${mount_args[@]}" -- ${@} 2>/dev/null
 	fi
 }
 
