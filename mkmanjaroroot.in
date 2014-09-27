@@ -153,25 +153,25 @@ chroot_lock () {
 	fi
 }
 
+mount_mount_args(){
+	for m_arg in ${mount_args[@]};do
+		mountpoint -q ${working_dir}${m_arg%;*} || mount -v "${m_arg#*;}" "${m_arg%;*}" "${working_dir}${m_arg%;*}"
+	done
+}
+
+umount_mount_args(){
+	for m_arg in ${mount_args[@]};do
+		mountpoint -q ${working_dir}${m_arg%;*} && umount -v "${working_dir}${m_arg%;*}"
+	done
+}
+
 chroot_run() {
 	local dir=$1
 	shift
 	if (( $IS_SYSTEMD ));then
 		systemd-nspawn -D "${dir}" "${mount_args[@]}" -- ${@} 2>/dev/null
-
 	else
-		# apply ';' filter
-		for m_arg in ${mount_args[@]};do
-			mount -v "${m_arg#*;}" "${m_arg%;*}" "${dir}${m_arg%;*}"
-		done
-
-		# chroot
 		arch-chroot "${dir}" "${@}" 2>/dev/null
-
-		# apply ';' filter
-		for m_arg in ${mount_args[@]};do
-			umount -v "${dir}${m_arg%;*}"
-		done
 	fi
 }
 
