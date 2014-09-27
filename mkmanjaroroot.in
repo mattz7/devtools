@@ -167,7 +167,7 @@ chroot_run() {
 		done
 
 		# chroot
-		arch-chroot ${dir} ${@} 2>/dev/null
+		arch-chroot "${dir}" "${@}" 2>/dev/null
 
 		# umount mount_args
 		# apply ';' filter
