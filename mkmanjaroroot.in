@@ -94,27 +94,15 @@ build_mount_args() {
 
 	if [[ -n $host_mirror_path ]]; then
 		printf -v p '%q' "$host_mirror_path"
-		if (( $IS_SYSTEMD ));then
-			mount_args+=(--bind-ro="$p")
-		else
-			mount_args+=("$p;-Br")
-		fi
+		mount_args+=(--bind-ro="$p")
 	fi
 
 	printf -v p '%q' "${cache_dirs[0]}"
-	if (( $IS_SYSTEMD ));then
-		mount_args+=(--bind="$p")
-	else
-		mount_args+=("$p;-B")
-	fi
+	mount_args+=(--bind="$p")
 
 	for cache_dir in ${cache_dirs[@]:1}; do
 		printf -v p '%q' "$cache_dir"
-		if (( $IS_SYSTEMD ));then
-			mount_args+=(--bind-ro="$p")
-		else
-			mount_args+=("$p;-Br")
-		fi
+		mount_args+=(--bind-ro="$p")
 	done
 }
 
@@ -153,16 +141,44 @@ chroot_lock () {
 	fi
 }
 
-mount_mount_args(){
-	for m_arg in ${mount_args[@]};do
-		mountpoint -q ${working_dir}${m_arg%;*} || mount -v "${m_arg#*;}" "${m_arg%;*}" "${working_dir}${m_arg%;*}"
-	done
+chroot_mount(){
+
+	[ -e "${working_dir}/sys" ] || mkdir "${working_dir}/sys"
+	mount -t sysfs sysfs "${working_dir}/sys"
+
+	[ -e "${working_dir}/proc" ] || mkdir "${working_dir}/proc"
+	mount -t proc proc "${working_dir}/proc"
+
+	[ -e "${working_dir}/dev" ] || mkdir "${working_dir}/dev"
+	mount -B /dev "${working_dir}/dev"
+
+	[ -e "${working_dir}/dev/shm" ] || mkdir "${working_dir}/dev/shm"
+	mount -t tmpfs shm "${working_dir}/dev/shm"
+
+	[ -e "${working_dir}/dev/pts" ] || mkdir "${working_dir}/dev/pts"
+	mount -t devpts devpts "${working_dir}/dev/pts"
+
+	[ -e "${cache_dirs[0]}" ] || mkdir -p "${cache_dirs[0]}"
+	[ -e "${working_dir}/${cache_dirs[0]}" ] || mkdir -p "${working_dir}/${cache_dirs[0]}"
+	mount -B "${cache_dirs[0]}" "${working_dir}/${cache_dirs[0]}"
+
+	if [ -n "${host_mirror_path}" ]; then
+		[ -e "${working_dir}/${host_mirror_path}" ] || mkdir -p "${working_dir}/${host_mirror_path}"
+		mount -B "${host_mirror_path}" "${working_dir}/${host_mirror_path}"
+		mount -o remount,ro,bind "${host_mirror_path}" "${working_dir}/${host_mirror_path}"
+	fi
+
+	trap 'chroot_umount' 0 1 2 15
 }
 
-umount_mount_args(){
-	for m_arg in ${mount_args[@]};do
-		mountpoint -q ${working_dir}${m_arg%;*} && umount -v "${working_dir}${m_arg%;*}"
-	done
+chroot_umount(){
+	umount "${working_dir}/proc"
+	umount "${working_dir}/sys"
+	umount "${working_dir}/dev/pts"
+	umount "${working_dir}/dev/shm"
+	umount "${working_dir}/dev"
+	umount "${working_dir}/${cache_dirs[0]}"
+	[ -n "${host_mirror_path}" ] && umount "${working_dir}/${host_mirror_path}"
 }
 
 chroot_run() {
@@ -171,7 +187,7 @@ chroot_run() {
 	if (( $IS_SYSTEMD ));then
 		systemd-nspawn -D "${dir}" "${mount_args[@]}" -- ${@} 2>/dev/null
 	else
-		arch-chroot "${dir}" "${@}" 2>/dev/null
+		chroot "${dir}" "${@}" 2>/dev/null
 	fi
 }
 
@@ -189,7 +205,11 @@ if [[ -n $RUN ]]; then
 	fi
 
 	chroot_lock
-	build_mount_args
+	if (( $IS_SYSTEMD ));then
+		build_mount_args
+	else
+		chroot_mount
+	fi
 	copy_hostconf
 
 	chroot_run "${working_dir}" ${RUN}
