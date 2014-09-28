@@ -20,6 +20,13 @@ branch='stable'
 
 APPNAME=$(basename "${0}")
 
+# check for systemd running on build system
+if [[ -d /run/systemd ]];then
+	IS_SYSTEMD=1
+else
+	IS_SYSTEMD=0
+fi
+
 # usage: usage <exitvalue>
 usage() {
 	echo "Usage: ${APPNAME} [options] working-dir [package-list | app]"
@@ -134,15 +141,63 @@ chroot_lock () {
 	fi
 }
 
+chroot_mount(){
+
+	[ -e "${working_dir}/sys" ] || mkdir "${working_dir}/sys"
+	mount -t sysfs sysfs "${working_dir}/sys"
+
+	[ -e "${working_dir}/proc" ] || mkdir "${working_dir}/proc"
+	mount -t proc proc "${working_dir}/proc"
+
+	[ -e "${working_dir}/dev" ] || mkdir "${working_dir}/dev"
+	mount -B /dev "${working_dir}/dev"
+
+	[ -e "${working_dir}/dev/shm" ] || mkdir "${working_dir}/dev/shm"
+	mount -t tmpfs shm "${working_dir}/dev/shm"
+
+	[ -e "${working_dir}/dev/pts" ] || mkdir "${working_dir}/dev/pts"
+	mount -t devpts devpts "${working_dir}/dev/pts"
+
+	mount -B /etc/resolv.conf "${working_dir}/etc/resolv.conf"
+
+	[ -e "${cache_dirs[0]}" ] || mkdir -p "${cache_dirs[0]}"
+	[ -e "${working_dir}/${cache_dirs[0]}" ] || mkdir -p "${working_dir}/${cache_dirs[0]}"
+	mount -B "${cache_dirs[0]}" "${working_dir}/${cache_dirs[0]}"
+
+	if [ -n "${host_mirror_path}" ]; then
+		[ -e "${working_dir}/${host_mirror_path}" ] || mkdir -p "${working_dir}/${host_mirror_path}"
+		mount -B "${host_mirror_path}" "${working_dir}/${host_mirror_path}"
+		mount -o remount,ro,bind "${host_mirror_path}" "${working_dir}/${host_mirror_path}"
+	fi
+
+	trap 'chroot_umount' 0 1 2 15
+}
+
+chroot_umount(){
+	umount "${working_dir}/proc"
+	umount "${working_dir}/sys"
+	umount "${working_dir}/dev/pts"
+	umount "${working_dir}/dev/shm"
+	umount "${working_dir}/dev"
+	umount "${working_dir}/etc/resolv.conf"
+	umount "${working_dir}/${cache_dirs[0]}"
+	[ -n "${host_mirror_path}" ] && umount "${working_dir}/${host_mirror_path}"
+}
+
 chroot_run() {
 	local dir=$1
 	shift
-	systemd-nspawn -D "${dir}" "${mount_args[@]}" -- ${@} 2>/dev/null
+	if (( $IS_SYSTEMD ));then
+		systemd-nspawn -D "${dir}" "${mount_args[@]}" -- ${@} 2>/dev/null
+	else
+		chroot "${dir}" "${@}" 2>/dev/null
+	fi
 }
 
 # }}}
 
 umask 0022
+
 if [[ -n $RUN ]]; then
 	# run chroot {{{
 	#Sanity check
@@ -153,7 +208,11 @@ if [[ -n $RUN ]]; then
 	fi
 
 	chroot_lock
-	build_mount_args
+	if (( $IS_SYSTEMD ));then
+		build_mount_args
+	else
+		chroot_mount
+	fi
 	copy_hostconf
 
 	chroot_run "${working_dir}" ${RUN}
