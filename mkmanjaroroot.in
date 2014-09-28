@@ -158,6 +158,8 @@ chroot_mount(){
 	[ -e "${working_dir}/dev/pts" ] || mkdir "${working_dir}/dev/pts"
 	mount -t devpts devpts "${working_dir}/dev/pts"
 
+	mount -B /etc/resolv.conf "${working_dir}/etc/resolv.conf"
+
 	[ -e "${cache_dirs[0]}" ] || mkdir -p "${cache_dirs[0]}"
 	[ -e "${working_dir}/${cache_dirs[0]}" ] || mkdir -p "${working_dir}/${cache_dirs[0]}"
 	mount -B "${cache_dirs[0]}" "${working_dir}/${cache_dirs[0]}"
@@ -177,6 +179,7 @@ chroot_umount(){
 	umount "${working_dir}/dev/pts"
 	umount "${working_dir}/dev/shm"
 	umount "${working_dir}/dev"
+	umount "${working_dir}/etc/resolv.conf"
 	umount "${working_dir}/${cache_dirs[0]}"
 	[ -n "${host_mirror_path}" ] && umount "${working_dir}/${host_mirror_path}"
 }
