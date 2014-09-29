@@ -40,7 +40,7 @@ usage() {
 	echo '    -n            Do not copy config files into the chroot'
 	echo '    -c <dir>      Set pacman cache'
 	echo '    -b <branch>   Set repository branch'
-	echo '    -a <arch>   	Set arch'
+	echo '    -a <arch>     Set arch'
 	echo '    -h            This message'
 	exit 1
 }
