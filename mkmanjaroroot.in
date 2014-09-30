@@ -17,6 +17,7 @@ NOCOPY='n'
 
 working_dir=''
 branch='stable'
+chroot_arch=$(uname -m)
 
 APPNAME=$(basename "${0}")
 
@@ -39,11 +40,12 @@ usage() {
 	echo '    -n            Do not copy config files into the chroot'
 	echo '    -c <dir>      Set pacman cache'
 	echo '    -b <branch>   Set repository branch'
+	echo '    -a <arch>     Set arch'
 	echo '    -h            This message'
 	exit 1
 }
 
-while getopts 'r:ufnhC:M:S:c:b:' arg; do
+while getopts 'r:ufnhC:M:S:a:c:b:' arg; do
 	case "${arg}" in
 		r) RUN="$OPTARG" ;;
 		u) RUN='pacman -Syu --noconfirm' ;;
@@ -53,6 +55,7 @@ while getopts 'r:ufnhC:M:S:c:b:' arg; do
 		c) cache_dir="$OPTARG" ;;
 		b) branch="$OPTARG" ;;
 		S) mirrors_conf="$OPTARG" ;;
+		a) chroot_arch="$OPTARG" ;;
 		h|?) usage ;;
 		*) error "invalid argument '${arg}'"; usage ;;
 	esac
@@ -113,6 +116,10 @@ copy_hostconf () {
 
 	if [[ -n $pac_conf && $NOCOPY = 'n' ]]; then
 		cp ${pac_conf} ${working_dir}/etc/pacman.conf
+
+		if [[ "$chroot_arch" == "i686" ]]; then
+			sed -i -e "s/^Architecture = auto/Architecture = i686/" ${working_dir}/etc/pacman.conf
+		fi
 	fi
 
 	if [[ -n $makepkg_conf && $NOCOPY = 'n' ]]; then
@@ -141,47 +148,37 @@ chroot_lock () {
 	fi
 }
 
-chroot_mount(){
-
-	[ -e "${working_dir}/sys" ] || mkdir "${working_dir}/sys"
-	mount -t sysfs sysfs "${working_dir}/sys"
-
-	[ -e "${working_dir}/proc" ] || mkdir "${working_dir}/proc"
-	mount -t proc proc "${working_dir}/proc"
-
-	[ -e "${working_dir}/dev" ] || mkdir "${working_dir}/dev"
-	mount -B /dev "${working_dir}/dev"
-
-	[ -e "${working_dir}/dev/shm" ] || mkdir "${working_dir}/dev/shm"
-	mount -t tmpfs shm "${working_dir}/dev/shm"
-
-	[ -e "${working_dir}/dev/pts" ] || mkdir "${working_dir}/dev/pts"
-	mount -t devpts devpts "${working_dir}/dev/pts"
-
-	mount -B /etc/resolv.conf "${working_dir}/etc/resolv.conf"
-
-	[ -e "${cache_dirs[0]}" ] || mkdir -p "${cache_dirs[0]}"
-	[ -e "${working_dir}/${cache_dirs[0]}" ] || mkdir -p "${working_dir}/${cache_dirs[0]}"
-	mount -B "${cache_dirs[0]}" "${working_dir}/${cache_dirs[0]}"
-
-	if [ -n "${host_mirror_path}" ]; then
-		[ -e "${working_dir}/${host_mirror_path}" ] || mkdir -p "${working_dir}/${host_mirror_path}"
-		mount -B "${host_mirror_path}" "${working_dir}/${host_mirror_path}"
-		mount -o remount,ro,bind "${host_mirror_path}" "${working_dir}/${host_mirror_path}"
+track_mount() {
+	if [[ -z $CHROOT_ACTIVE_MOUNTS ]]; then
+	  CHROOT_ACTIVE_MOUNTS=()
+	  trap 'chroot_umount' EXIT
 	fi
 
-	trap 'chroot_umount' 0 1 2 15
+	mount "$@" && CHROOT_ACTIVE_MOUNTS=("$2" "${CHROOT_ACTIVE_MOUNTS[@]}")
 }
 
-chroot_umount(){
-	umount "${working_dir}/proc"
-	umount "${working_dir}/sys"
-	umount "${working_dir}/dev/pts"
-	umount "${working_dir}/dev/shm"
-	umount "${working_dir}/dev"
-	umount "${working_dir}/etc/resolv.conf"
-	umount "${working_dir}/${cache_dirs[0]}"
-	[ -n "${host_mirror_path}" ] && umount "${working_dir}/${host_mirror_path}"
+mount_conditionally() {
+	local cond=$1; shift
+	if eval "$cond"; then
+	  track_mount "$@"
+	fi
+}
+
+api_fs_mount() {
+	mount_conditionally "! mountpoint -q '$1'" "$1" "$1" --bind &&
+	track_mount proc "$1/proc" -t proc -o nosuid,noexec,nodev &&
+	track_mount sys "$1/sys" -t sysfs -o nosuid,noexec,nodev,ro &&
+	track_mount udev "$1/dev" -t devtmpfs -o mode=0755,nosuid &&
+	track_mount devpts "$1/dev/pts" -t devpts -o mode=0620,gid=5,nosuid,noexec &&
+	track_mount shm "$1/dev/shm" -t tmpfs -o mode=1777,nosuid,nodev &&
+	track_mount run "$1/run" -t tmpfs -o nosuid,nodev,mode=0755 &&
+	track_mount tmp "$1/tmp" -t tmpfs -o mode=1777,strictatime,nodev,nosuid
+	track_mount /etc/resolv.conf "$1/etc/resolv.conf" --bind
+	track_mount ${cache_dirs[0]} "$1/${cache_dirs[0]}" --bind
+}
+
+chroot_umount() {
+	umount "${CHROOT_ACTIVE_MOUNTS[@]}"
 }
 
 chroot_run() {
@@ -190,7 +187,7 @@ chroot_run() {
 	if (( $IS_SYSTEMD ));then
 		systemd-nspawn -D "${dir}" "${mount_args[@]}" -- ${@} 2>/dev/null
 	else
-		chroot "${dir}" "${@}" 2>/dev/null
+		chroot "${dir}" "${@}"
 	fi
 }
 
@@ -211,7 +208,7 @@ if [[ -n $RUN ]]; then
 	if (( $IS_SYSTEMD ));then
 		build_mount_args
 	else
-		chroot_mount
+		api_fs_mount "${working_dir}"
 	fi
 	copy_hostconf
 

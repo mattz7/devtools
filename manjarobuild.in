@@ -75,6 +75,7 @@ if ${clean_first} || [[ ! -d "${chroots}/${repo}-${arch}" ]]; then
 		-C "@pkgdatadir@/pacman-${pacman_conf_arch}.conf" \
 		-M "@pkgdatadir@/makepkg-${arch}.conf" \
 		-b "${branch}" \
+		-a "${arch}" \
 		"${chroots}/${repo}-${arch}/root" \
 		"${base_packages[@]}" || abort
 else
@@ -83,6 +84,7 @@ else
 		-C "@pkgdatadir@/pacman-${pacman_conf_arch}.conf" \
 		-M "@pkgdatadir@/makepkg-${arch}.conf" \
 		-b "${branch}" \
+		-a "${arch}" \
 		"${chroots}/${repo}-${arch}/root" || abort
 fi
 
