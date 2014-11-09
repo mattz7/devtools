@@ -1,23 +1,26 @@
-V=20130501
+V=20141024
 
 PREFIX = /usr/local
 
 BINPROGS = \
 	checkpkg \
-	manjarobuild \
+	archbuild \
 	lddd \
 	finddeps \
 	find-libdeps \
+	arch-nspawn \
+	mkarchroot \
+	makechrootpkg \
 	signpkg \
-	signpkgs \
-	mkmanjaroroot \
-	makechrootpkg
+	signpkgs
 
 CONFIGFILES = \
 	makepkg-i686.conf \
 	makepkg-x86_64.conf \
 	pacman-default.conf \
-	pacman-mirrors.conf \
+	pacman-mirrors-stable.conf \
+	pacman-mirrors-testing.conf \
+	pacman-mirrors-unstable.conf \
 	pacman-multilib.conf
 
 MANJAROBUILD_LINKS = \
@@ -32,7 +35,7 @@ MANJAROBUILD_LINKS = \
 	unstable-multilib-build
 
 
-all: $(BINPROGS)
+all: $(BINPROGS) bash_completion zsh_completion
 
 edit = sed -e "s|@pkgdatadir[@]|$(DESTDIR)$(PREFIX)/share/devtools|g"
 
@@ -42,23 +45,34 @@ edit = sed -e "s|@pkgdatadir[@]|$(DESTDIR)$(PREFIX)/share/devtools|g"
 	@m4 -P $@.in | $(edit) >$@
 	@chmod a-w "$@"
 	@chmod +x "$@"
+	@bash -O extglob -n "$@"
 
 clean:
-	rm -f $(BINPROGS)
+	rm -f $(BINPROGS) bash_completion zsh_completion
 
 install:
 	install -dm0755 $(DESTDIR)$(PREFIX)/bin
 	install -dm0755 $(DESTDIR)$(PREFIX)/share/devtools
 	install -m0755 ${BINPROGS} $(DESTDIR)$(PREFIX)/bin
 	install -m0644 ${CONFIGFILES} $(DESTDIR)$(PREFIX)/share/devtools
-	for l in ${MANJAROBUILD_LINKS}; do ln -sf manjarobuild $(DESTDIR)$(PREFIX)/bin/$$l; done
+	for l in ${MANJAROBUILD_LINKS}; do ln -sf archbuild $(DESTDIR)$(PREFIX)/bin/$$l; done
 	ln -sf find-libdeps $(DESTDIR)$(PREFIX)/bin/find-libprovides
+	install -Dm0644 bash_completion $(DESTDIR)/usr/share/bash-completion/completions/devtools
+	install -Dm0644 zsh_completion $(DESTDIR)$(PREFIX)/share/zsh/site-functions/_devtools
+	ln -sf archbuild $(DESTDIR)$(PREFIX)/bin/manjarobuild
+	ln -sf arch-nspawn $(DESTDIR)$(PREFIX)/bin/manjaro-nspawn
+	ln -sf mkarchroot $(DESTDIR)$(PREFIX)/bin/mkmanjaroroot
 
 uninstall:
 	for f in ${BINPROGS}; do rm -f $(DESTDIR)$(PREFIX)/bin/$$f; done
 	for f in ${CONFIGFILES}; do rm -f $(DESTDIR)$(PREFIX)/share/devtools/$$f; done
 	for l in ${MANJAROBUILD_LINKS}; do rm -f $(DESTDIR)$(PREFIX)/bin/$$l; done
+	rm $(DESTDIR)/usr/share/bash-completion/completions/devtools
+	rm $(DESTDIR)$(PREFIX)/share/zsh/site-functions/_devtools
 	rm -f $(DESTDIR)$(PREFIX)/bin/find-libprovides
+	rm -f $(DESTDIR)$(PREFIX)/bin/manjarobuild
+	rm -f $(DESTDIR)$(PREFIX)/bin/manjaro-nspawn
+	rm -f $(DESTDIR)$(PREFIX)/bin/mkmanjaroroot
 
 dist:
 	git archive --format=tar --prefix=devtools-$(V)/ $(V) | gzip -9 > devtools-$(V).tar.gz

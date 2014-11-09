@@ -1,6 +1,8 @@
 # Avoid any encoding problems
 export LANG=C
 
+shopt -s extglob
+
 # check if messages are to be printed using color
 unset ALL_OFF BOLD BLUE GREEN RED YELLOW
 if [[ -t 2 ]]; then
@@ -63,12 +65,12 @@ setup_workdir() {
 
 cleanup() {
 	[[ -n $WORKDIR ]] && rm -rf "$WORKDIR"
-	[[ $1 ]] && exit $1
+	exit ${1:-0}
 }
 
 abort() {
-	msg 'Aborting...'
-	cleanup 0
+	error 'Aborting...'
+	cleanup 255
 }
 
 trap_abort() {
@@ -77,13 +79,14 @@ trap_abort() {
 }
 
 trap_exit() {
+	local r=$?
 	trap - EXIT INT QUIT TERM HUP
-	cleanup
+	cleanup $r
 }
 
 die() {
-	error "$*"
-	cleanup 1
+	(( $# )) && error "$@"
+	cleanup 255
 }
 
 trap 'trap_abort' INT QUIT TERM HUP
@@ -112,7 +115,7 @@ get_full_version() {
 	pkgbase=${pkgbase:-${pkgname[0]}}
 	epoch=${epoch:-0}
 	if [[ -z $1 ]]; then
-		if [[ $epoch ]] && (( ! $epoch )); then
+		if (( ! epoch )); then
 			echo $pkgver-$pkgrel
 		else
 			echo $epoch:$pkgver-$pkgrel
@@ -128,5 +131,113 @@ get_full_version() {
 		else
 			echo $epoch_override:$pkgver_override-$pkgrel_override
 		fi
+	fi
+}
+
+##
+#  usage : lock( $fd, $file, $message )
+##
+lock() {
+	eval "exec $1>"'"$2"'
+	if ! flock -n $1; then
+		stat_busy "$3"
+		flock $1
+		stat_done
+	fi
+}
+
+##
+#  usage : slock( $fd, $file, $message )
+##
+slock() {
+	eval "exec $1>"'"$2"'
+	if ! flock -sn $1; then
+		stat_busy "$3"
+		flock -s $1
+		stat_done
+	fi
+}
+
+##
+# usage: pkgver_equal( $pkgver1, $pkgver2 )
+##
+pkgver_equal() {
+	local left right
+
+	if [[ $1 = *-* && $2 = *-* ]]; then
+		# if both versions have a pkgrel, then they must be an exact match
+		[[ $1 = "$2" ]]
+	else
+		# otherwise, trim any pkgrel and compare the bare version.
+		[[ ${1%%-*} = "${2%%-*}" ]]
+	fi
+}
+
+##
+#  usage: find_cached_package( $pkgname, $pkgver, $arch )
+#
+#    $pkgver can be supplied with or without a pkgrel appended.
+#    If not supplied, any pkgrel will be matched.
+##
+find_cached_package() {
+	local searchdirs=("$PWD" "$PKGDEST") results=()
+	local targetname=$1 targetver=$2 targetarch=$3
+	local dir pkg pkgbasename pkgparts name ver rel arch size r results
+
+	for dir in "${searchdirs[@]}"; do
+		[[ -d $dir ]] || continue
+
+		for pkg in "$dir"/*.pkg.tar?(.?z); do
+			[[ -f $pkg ]] || continue
+
+			# avoid adding duplicates of the same inode
+			for r in "${results[@]}"; do
+				[[ $r -ef $pkg ]] && continue 2
+			done
+
+			# split apart package filename into parts
+			pkgbasename=${pkg##*/}
+			pkgbasename=${pkgbasename%.pkg.tar?(.?z)}
+
+			arch=${pkgbasename##*-}
+			pkgbasename=${pkgbasename%-"$arch"}
+
+			rel=${pkgbasename##*-}
+			pkgbasename=${pkgbasename%-"$rel"}
+
+			ver=${pkgbasename##*-}
+			name=${pkgbasename%-"$ver"}
+
+			if [[ $targetname = "$name" && $targetarch = "$arch" ]] &&
+					pkgver_equal "$targetver" "$ver-$rel"; then
+				results+=("$pkg")
+			fi
+		done
+	done
+
+	case ${#results[*]} in
+		0)
+			return 1
+			;;
+		1)
+			printf '%s\n' "$results"
+			return 0
+			;;
+		*)
+			error 'Multiple packages found:'
+			printf '\t%s\n' "${results[@]}" >&2
+			return 1
+	esac
+}
+
+##
+#  usage : check_root ("$0" "$@")
+##
+check_root() {
+	(( EUID == 0 )) && return
+	if type -P sudo >/dev/null; then
+		exec sudo -- "$@"
+	else
+		exec su root -c "$(printf ' %q' "$@")"
 	fi
 }

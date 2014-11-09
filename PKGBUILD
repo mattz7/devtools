@@ -1,15 +1,14 @@
 # Maintainer: Roland Singer <roland@manjaro.org>
 
 pkgname=devtools
-pkgver=20140927
+pkgver=20141109
 pkgrel=1
 pkgdesc='Tools for Manjaro Linux package maintainers'
 arch=('any')
 license=('GPL')
 url='http://git.manjaro.org/core/devtools/'
 depends=('namcap' 'openssh' 'subversion' 'rsync' 'arch-install-scripts')
-source=("git+https://github.com/udeved/devtools.git")
-# source=(git+https://github.com/manjaro/devtools.git)
+source=("git+https://github.com/manjaro/devtools.git")
 sha256sums=('SKIP')
 
 pkgver() {

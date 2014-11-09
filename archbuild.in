@@ -7,18 +7,17 @@ makechrootpkg_args=(-c -n)
 
 cmd="${0##*/}"
 tag="${cmd%-build}"
-repo=${tag%-*}
-arch=${tag##*-}
-pacman_conf_arch='default'
-branch="${repo}"
-
-if [ "$arch" == 'multilib' ]; then
-	pacman_conf_arch='multilib'
+branch=${tag%-*}
+if [[ "${cmd%%-*}" == 'multilib' ]]; then
+	repo="${tag%-*}-multilib"	
 	arch='x86_64'
-	repo="${repo}-multilib"
 	base_packages+=(multilib-devel)
+	pacman_conf_arch='multilib'
+else
+	repo=${tag%-*}
+	arch=${tag##*-}
+	pacman_conf_arch='default'
 fi
-
 chroots='/var/lib/manjarobuild'
 clean_first=false
 
@@ -33,6 +32,8 @@ usage() {
 	exit 1
 }
 
+orig_argv=("$@")
+
 while getopts 'hcr:' arg; do
 	case "${arg}" in
 		c) clean_first=true ;;
@@ -41,12 +42,10 @@ while getopts 'hcr:' arg; do
 	esac
 done
 
+check_root "$0" "${orig_argv[@]}"
+
 # Pass all arguments after -- right to makepkg
 makechrootpkg_args+=("${@:$OPTIND}")
-
-if (( EUID )); then
-	die 'This script must be run as root.'
-fi
 
 if ${clean_first} || [[ ! -d "${chroots}/${repo}-${arch}" ]]; then
 	msg "Creating chroot for [${repo}] (${arch})..."
@@ -55,12 +54,7 @@ if ${clean_first} || [[ ! -d "${chroots}/${repo}-${arch}" ]]; then
 		[[ -d $copy ]] || continue
 		msg2 "Deleting chroot copy '$(basename "${copy}")'..."
 
-		exec 9>"$copydir.lock"
-		if ! flock -n 9; then
-			stat_busy "Locking chroot copy '$copy'"
-			flock 9
-			stat_done
-		fi
+		lock 9 "$copy.lock" "Locking chroot copy '$copy'"
 
 		if [[ "$(stat -f -c %T "${copy}")" == btrfs ]]; then
 			{ type -P btrfs && btrfs subvolume delete "${copy}"; } &>/dev/null
@@ -71,22 +65,21 @@ if ${clean_first} || [[ ! -d "${chroots}/${repo}-${arch}" ]]; then
 
 	rm -rf --one-file-system "${chroots}/${repo}-${arch}"
 	mkdir -p "${chroots}/${repo}-${arch}"
-	setarch "${arch}" mkmanjaroroot \
+	setarch "${arch}" mkarchroot \
 		-C "@pkgdatadir@/pacman-${pacman_conf_arch}.conf" \
 		-M "@pkgdatadir@/makepkg-${arch}.conf" \
-		-b "${branch}" \
-		-a "${arch}" \
+		-S "@pkgdatadir@/pacman-mirrors-${branch}.conf" \
 		"${chroots}/${repo}-${arch}/root" \
 		"${base_packages[@]}" || abort
 else
-	setarch ${arch} mkmanjaroroot \
-		-u \
+	lock 9 "${chroots}/${repo}-${arch}/root.lock" "Locking clean chroot"
+	arch-nspawn \
 		-C "@pkgdatadir@/pacman-${pacman_conf_arch}.conf" \
 		-M "@pkgdatadir@/makepkg-${arch}.conf" \
-		-b "${branch}" \
-		-a "${arch}" \
-		"${chroots}/${repo}-${arch}/root" || abort
+		-S "@pkgdatadir@/pacman-mirrors-${branch}.conf" \
+		"${chroots}/${repo}-${arch}/root" \
+                pacman -Syu --noconfirm || abort
 fi
 
 msg "Building in chroot for [${repo}] (${arch})..."
-exec setarch "${arch}" makechrootpkg "${makechrootpkg_args[@]}" -r "${chroots}/${repo}-${arch}" -b "${branch}"
+exec makechrootpkg -r "${chroots}/${repo}-${arch}" "${makechrootpkg_args[@]}"
