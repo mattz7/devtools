@@ -1,7 +1,7 @@
 # Maintainer: Roland Singer <roland@manjaro.org>
 
 pkgname=devtools
-pkgver=20141109
+pkgver=20141224
 pkgrel=1
 pkgdesc='Tools for Manjaro Linux package maintainers'
 arch=('any')
