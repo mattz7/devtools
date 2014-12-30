@@ -8,7 +8,7 @@ makechrootpkg_args=(-c -n)
 cmd="${0##*/}"
 tag="${cmd%-build}"
 branch=${tag%-*}
-if [[ "${cmd%%-*}" == 'multilib' ]]; then
+if [[ "${tag##*-}" == 'multilib' ]]; then
 	repo="${tag%-*}-multilib"	
 	arch='x86_64'
 	base_packages+=(multilib-devel)
